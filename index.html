@@ -11,7 +11,7 @@
     
     <!-- Google Fonts (Patrick Hand para um visual divertido) --><link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
     
-    <!-- Configuração do Tailwind para usar a fonte Patrick Hand --><script>
+    <!-- Configuração do Tailwind para usar a fonte Patrick Hand e animações --><script>
         tailwind.config = {
             theme: {
                 extend: {
@@ -40,6 +40,7 @@
                         'match': 'match 0.5s ease-in-out',
                         'boing': 'boing 0.5s ease-out',
                         'confetti': 'confetti 3s forwards',
+                        // animate-pulse é padrão do Tailwind
                     }
                 },
             },
@@ -147,12 +148,27 @@
             Fazendinha da Liz
         </h1>
 
-        <!-- Painel de Status (Tempo, Jogadas, Reiniciar) --><div class="flex flex-col sm:flex-row justify-between items-center bg-white/80 backdrop-blur-sm p-3 sm:p-4 rounded-xl shadow-lg mb-4 text-xl sm:text-2xl gap-2">
-            <div class="flex gap-4 text-pink-700">
+        <!-- Painel de Status (Tempo, Jogadas, Botão 'L' e Reiniciar) -->
+        <div class="flex flex-col sm:flex-row justify-between items-center bg-white/80 backdrop-blur-sm p-3 sm:p-4 rounded-xl shadow-lg mb-4 text-xl sm:text-2xl gap-4">
+            
+            <!-- Status Info (Sempre primeiro/esquerda) -->
+            <div class="flex gap-4 text-pink-700 w-full sm:w-auto justify-center sm:justify-start">
                 <div class="font-bold">Tempo: <span id="time" class="font-normal">0</span>s</div>
                 <div class="font-bold">Jogadas: <span id="moves" class="font-normal">0</span></div>
             </div>
-            <button id="restart-btn" class="w-full sm:w-auto bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-all duration-200 transform hover:scale-105">
+
+            <!-- NOVO Botão Pulsante 'L' (Centralizado) -->
+            <div class="flex justify-center flex-grow sm:flex-grow-0 w-full sm:w-auto order-3 sm:order-2">
+                <button id="liz-info-btn" class="w-16 h-16 rounded-full text-3xl font-bold flex items-center justify-center transition-all duration-300 transform hover:scale-110 
+                    /* Estilos aprimorados: Gradiente, borda branca, sombra pulsante */
+                    bg-gradient-to-br from-yellow-300 to-pink-400 text-pink-800 border-4 border-white 
+                    shadow-[0_0_20px_rgba(255,100,150,0.8)] animate-pulse">
+                    L
+                </button>
+            </div>
+
+            <!-- Botão Reiniciar (Sempre por último/direita) -->
+            <button id="restart-btn" class="w-full sm:w-auto bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-all duration-200 transform hover:scale-105 order-2 sm:order-3">
                 Reiniciar Jogo
             </button>
         </div>
@@ -174,6 +190,29 @@
         </div>
     </div>
 
+    <!-- NOVO Modal para a Animação da Liz (escondido por padrão) -->
+    <div id="liz-modal" class="hidden fixed inset-0 bg-black/80 flex items-center justify-center p-4 z-50">
+        <div id="liz-modal-content" class="bg-white p-4 sm:p-6 rounded-2xl shadow-2xl text-center text-pink-800 max-w-lg w-full transform scale-0 transition-transform duration-300">
+            <h2 class="text-4xl font-patrick font-bold text-pink-600 mb-4">Mensagem da Liz</h2>
+            
+            <!-- Vídeo para carregar a animação da Liz (MP4) -->
+            <div class="aspect-video w-full mb-4">
+                <video
+                    src="https://i.imgur.com/C4oh5yy.mp4" 
+                    autoplay 
+                    loop 
+                    muted 
+                    playsinline
+                    class="w-full h-full rounded-xl border-4 border-pink-300 object-cover"
+                ></video>
+            </div>
+
+            <button id="close-liz-modal-btn" class="bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-6 text-xl rounded-lg shadow-md transition-all duration-200 transform hover:scale-105">
+                Voltar ao Jogo
+            </button>
+        </div>
+    </div>
+
     <script>
         document.addEventListener('DOMContentLoaded', () => {
             // Elementos do DOM
@@ -186,6 +225,13 @@
             const finalTimeEl = document.getElementById('final-time');
             const finalMovesEl = document.getElementById('final-moves');
             const playAgainBtn = document.getElementById('play-again-btn');
+
+            // NOVOS Elementos do DOM (Liz Info)
+            const lizInfoBtn = document.getElementById('liz-info-btn');
+            const lizModal = document.getElementById('liz-modal');
+            const lizModalContent = document.getElementById('liz-modal-content');
+            const closeLizModalBtn = document.getElementById('close-liz-modal-btn');
+
 
             // --- Configuração dos Animais e Sons ---
             
@@ -210,7 +256,6 @@
             ];
 
             // Configuração dos sintetizadores e sons
-            // Usamos diferentes tipos de synth para sons mais característicos
             // VERSÃO MAIS INFANTIL: Sons mais agudos e suaves (tipo caixinha de música/brinquedo)
             const synths = {
                 'vaca': new Tone.PluckSynth({ attackNoise: 0.1, dampening: 4000, resonance: 0.7 }).toDestination(),
@@ -333,7 +378,7 @@
                 flippedCards = [];
                 movesEl.textContent = moves;
                 
-                // Para o timer antigo e o esconde
+                // Para o timer antigo
                 clearInterval(timerInterval);
                 winModal.classList.add('hidden');
                 winModalContent.classList.add('scale-0');
@@ -349,6 +394,18 @@
 
                 createBoard();
             }
+            
+            // NOVA Função para reiniciar o timer sem resetar o tempo total (para quando fecha o modal)
+            function restartTimerFromCurrentTime() {
+                const currentSeconds = parseInt(timeEl.textContent, 10);
+                let startTime = Date.now() - (currentSeconds * 1000);
+                
+                timerInterval = setInterval(() => {
+                    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+                    timeEl.textContent = elapsedTime;
+                }, 1000);
+            }
+
 
             // Função para lidar com o clique na carta
             function handleCardClick(card) {
@@ -464,10 +521,42 @@
                     winModalContent.classList.add('scale-100', 'animate-boing');
                 }, 100); // Pequeno delay para a animação funcionar
             }
+            
+            // Função para mostrar o modal da Liz
+            function showLizModal() {
+                // Pausa o timer
+                clearInterval(timerInterval); 
+
+                lizModal.classList.remove('hidden');
+                setTimeout(() => {
+                    lizModalContent.classList.remove('scale-0');
+                    lizModalContent.classList.add('scale-100', 'animate-boing');
+                }, 100);
+            }
+
+            // Função para esconder o modal da Liz
+            function hideLizModal() {
+                lizModalContent.classList.remove('scale-100', 'animate-boing');
+                lizModalContent.classList.add('scale-0');
+                
+                setTimeout(() => {
+                    lizModal.classList.add('hidden');
+                    // Retoma o timer se o jogo não estiver terminado
+                    if (matchedPairs < animalData.length) {
+                        restartTimerFromCurrentTime();
+                    }
+                }, 300); // Espera a animação de saída
+            }
+
 
             // --- Event Listeners ---
             restartBtn.addEventListener('click', startGame);
             playAgainBtn.addEventListener('click', startGame);
+            
+            // Event Listeners para o novo botão e modal
+            lizInfoBtn.addEventListener('click', showLizModal);
+            closeLizModalBtn.addEventListener('click', hideLizModal);
+
 
             // Inicia o jogo pela primeira vez
             startGame();
@@ -475,5 +564,4 @@
     </script>
 </body>
 </html>
-
 
