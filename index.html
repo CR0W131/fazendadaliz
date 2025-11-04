@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fazendinha da Liz</title>
+    
+    <!-- Tailwind CSS --><script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Tone.js para sons --><script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.min.js"></script>
+    
+    <!-- Google Fonts (Patrick Hand para um visual divertido) --><link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+    
+    <!-- Configuração do Tailwind para usar a fonte Patrick Hand --><script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: {
+                        'patrick': ['"Patrick Hand"', 'cursive'],
+                    },
+                    keyframes: {
+                        // Animação de brilho para quando acertar
+                        match: {
+                            '0%, 100%': { transform: 'scale(1)', boxShadow: '0 0 5px rgba(74, 222, 128, 0.5)' },
+                            '50%': { transform: 'scale(1.05)', boxShadow: '0 0 20px rgba(74, 222, 128, 1)' },
+                        },
+                        // Animação de "balançar" para o modal
+                        boing: {
+                            '0%, 100%': { transform: 'scale(1)' },
+                            '25%': { transform: 'scale(0.95)' },
+                            '50%': { transform: 'scale(1.05)' },
+                        },
+                        // Animação de "confetti" para o match
+                        confetti: {
+                            '0%': { transform: 'translateY(0) rotateZ(0deg)', opacity: '1' },
+                            '100%': { transform: 'translateY(-1000px) rotateZ(1080deg)', opacity: '0' },
+                        }
+                    },
+                    animation: {
+                        'match': 'match 0.5s ease-in-out',
+                        'boing': 'boing 0.5s ease-out',
+                        'confetti': 'confetti 3s forwards',
+                    }
+                },
+            },
+        };
+    </script>
+
+    <!-- Estilos CSS customizados para o efeito de "flip" da carta --><style>
+        /* Define as cores-tema como variáveis CSS para fácil manutenção */
+        :root {
+            --bg-color: #f0fdfa; /* emerald-50 */
+            --primary-text: #db2777; /* Cor-tema rosa para o texto principal */
+            --card-back-color: #f59e0b; /* amber-500 */
+            --card-back-icon: #b45309; /* amber-700 */
+            --card-front-color: #e0f2fe; /* sky-100 */
+            --accent-color: #ec4899; /* pink-500 */
+        }
+    
+        body {
+            font-family: 'Patrick Hand', 'cursive';
+            background-color: var(--bg-color);
+            color: var(--primary-text);
+        }
+
+        /* Container da carta para perspectiva 3D */
+        .card {
+            perspective: 1000px;
+            aspect-ratio: 1 / 1; /* Garante que a carta seja sempre quadrada */
+        }
+
+        /* O miolo da carta que gira */
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+
+        /* Vira o miolo quando a carta tem a classe 'is-flipped' */
+        .card.is-flipped .card-inner {
+            transform: rotateY(180deg);
+        }
+
+        /* Estilo comum para frente e verso */
+        .card-front,
+        .card-back {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden; /* Safari */
+            backface-visibility: hidden;
+            border-radius: 0.75rem; /* rounded-xl */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Verso da carta (visível por padrão) */
+        .card-back {
+            background-color: var(--card-back-color);
+            color: var(--card-back-icon);
+            font-size: 2.5rem; /* Ajuste o tamanho do ícone */
+            border: 4px solid var(--card-back-icon);
+        }
+
+        /* Frente da carta (visível após girar) */
+        .card-front {
+            background-color: var(--card-front-color);
+            transform: rotateY(180deg);
+            font-size: 2.5rem; /* Tamanho inicial do emoji */
+        }
+        
+        /* Media query para emojis maiores em telas maiores */
+        @media (min-width: 640px) {
+            .card-front {
+                font-size: 3rem;
+            }
+        }
+        
+        /* Animação de "par encontrado" */
+        .card.is-matched .card-inner {
+            animation: match 0.5s ease-in-out;
+        }
+
+        /* Estilos para o efeito de confetti */
+        .confetti {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: var(--color);
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 1000;
+            animation: confetti 3s forwards;
+            opacity: 0; /* Começa invisível e se torna visível com a animação */
+        }
+    </style>
+</head>
+
+<body class="flex items-center justify-center min-h-screen p-2 sm:p-4">
+
+    <main class="w-full max-w-4xl mx-auto">
+        <!-- Título do Jogo --><h1 class="text-6xl sm:text-8xl font-bold text-center text-pink-600 mb-4 drop-shadow-md">
+            Fazendinha da Liz
+        </h1>
+
+        <!-- Painel de Status (Tempo, Jogadas, Reiniciar) --><div class="flex flex-col sm:flex-row justify-between items-center bg-white/80 backdrop-blur-sm p-3 sm:p-4 rounded-xl shadow-lg mb-4 text-xl sm:text-2xl gap-2">
+            <div class="flex gap-4 text-pink-700">
+                <div class="font-bold">Tempo: <span id="time" class="font-normal">0</span>s</div>
+                <div class="font-bold">Jogadas: <span id="moves" class="font-normal">0</span></div>
+            </div>
+            <button id="restart-btn" class="w-full sm:w-auto bg-pink-500 hover:bg-pink-600 text-white font-bold py-2 px-6 rounded-lg shadow-md transition-all duration-200 transform hover:scale-105">
+                Reiniciar Jogo
+            </button>
+        </div>
+
+        <!-- Tabuleiro do Jogo (8x4) --><div id="game-board" class="grid grid-cols-4 sm:grid-cols-8 gap-3 sm:gap-4">
+            <!-- As cartas serão geradas pelo JavaScript aqui --></div>
+    </main>
+
+    <!-- Modal de Vitória (escondido por padrão) --><div id="win-modal" class="hidden fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
+        <div id="win-modal-content" class="bg-white p-8 rounded-2xl shadow-2xl text-center text-pink-800 max-w-sm transform scale-0 transition-transform duration-300">
+            <h2 class="text-6xl font-patrick font-bold text-yellow-500 mb-4">Parabéns!</h2>
+            <img src="https://i.imgur.com/mWfbZSa.png" alt="[Imagem de porquinho da fazenda comemorando]" class="mx-auto rounded-lg mb-4 w-3/4">
+            <p class="text-2xl mb-2">Você completou o jogo!</p>
+            <p class="text-xl mb-1">Seu tempo: <span id="final-time" class="font-bold">0</span>s</p>
+            <p class="text-xl mb-6">Total de jogadas: <span id="final-moves" class="font-bold">0</span></p>
+            <button id="play-again-btn" class="bg-pink-500 hover:bg-pink-600 text-white font-bold py-3 px-8 text-xl rounded-lg shadow-md transition-all duration-200 transform hover:scale-105">
+                Jogar de Novo
+            </button>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            // Elementos do DOM
+            const gameBoard = document.getElementById('game-board');
+            const movesEl = document.getElementById('moves');
+            const timeEl = document.getElementById('time');
+            const restartBtn = document.getElementById('restart-btn');
+            const winModal = document.getElementById('win-modal');
+            const winModalContent = document.getElementById('win-modal-content');
+            const finalTimeEl = document.getElementById('final-time');
+            const finalMovesEl = document.getElementById('final-moves');
+            const playAgainBtn = document.getElementById('play-again-btn');
+
+            // --- Configuração dos Animais e Sons ---
+            
+            // 16 pares
+            const animalData = [
+                { emoji: '🐄', id: 'vaca' },
+                { emoji: '🐎', id: 'cavalo' },
+                { emoji: '🐖', id: 'porco' },
+                { emoji: '🐔', id: 'galinha' },
+                { emoji: '🦆', id: 'pato' },
+                { emoji: '🐑', id: 'ovelha' },
+                { emoji: '🐐', id: 'cabra' },
+                { emoji: '🐕', id: 'cachorro' },
+                { emoji: '🐈', id: 'gato' },
+                { emoji: '🐇', id: 'coelho' },
+                { emoji: '🐸', id: 'sapo' },
+                { emoji: '🦃', id: 'peru' },
+                { emoji: '🐓', id: 'galo' },
+                { emoji: '🐁', id: 'rato' },
+                { emoji: '🐦', id: 'passaro' },
+                { emoji: '🐝', id: 'abelha' },
+            ];
+
+            // Configuração dos sintetizadores e sons
+            // Usamos diferentes tipos de synth para sons mais característicos
+            // VERSÃO MAIS INFANTIL: Sons mais agudos e suaves (tipo caixinha de música/brinquedo)
+            const synths = {
+                'vaca': new Tone.PluckSynth({ attackNoise: 0.1, dampening: 4000, resonance: 0.7 }).toDestination(),
+                'cavalo': new Tone.PluckSynth({ attackNoise: 0.1, dampening: 4000, resonance: 0.7 }).toDestination(),
+                'porco': new Tone.PluckSynth({ attackNoise: 0.1, dampening: 4000, resonance: 0.7 }).toDestination(),
+                'galinha': new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, release: 0.2 } }).toDestination(),
+                'pato': new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, release: 0.2 } }).toDestination(),
+                'ovelha': new Tone.PluckSynth({ attackNoise: 0.1, dampening: 4000, resonance: 0.7 }).toDestination(),
+                'cabra': new Tone.PluckSynth({ attackNoise: 0.1, dampening: 4000, resonance: 0.7 }).toDestination(),
+                'cachorro': new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, release: 0.2 } }).toDestination(),
+                'gato': new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, release: 0.3 } }).toDestination(),
+                'coelho': new Tone.PluckSynth({ attackNoise: 0.1, dampening: 4000, resonance: 0.7 }).toDestination(),
+                'sapo': new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, release: 0.2 } }).toDestination(),
+                'peru': new Tone.PluckSynth({ attackNoise: 0.1, dampening: 4000, resonance: 0.7 }).toDestination(),
+                'galo': new Tone.Synth({ oscillator: { type: 'triangle' }, envelope: { attack: 0.01, release: 0.2 } }).toDestination(),
+                'rato': new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, release: 0.1 } }).toDestination(),
+                'passaro': new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, release: 0.2 } }).toDestination(),
+                'abelha': new Tone.Synth({ oscillator: { type: 'sine' }, envelope: { attack: 0.01, release: 0.2 } }).toDestination(),
+            };
+
+            const soundNotes = {
+                'vaca': 'C5',
+                'cavalo': 'G4',
+                'porco': 'E4',
+                'galinha': 'C6',
+                'pato': 'A5',
+                'ovelha': 'F4',
+                'cabra': 'G#4',
+                'cachorro': 'A4',
+                'gato': 'E6',
+                'coelho': 'B5',
+                'sapo': 'D4',
+                'peru': 'F#4',
+                'galo': 'B4',
+                'rato': 'G6',
+                'passaro': 'D6',
+                'abelha': 'A6',
+            };
+
+            // Synth para o som de vitória ao acertar um par
+            const winPairSynth = new Tone.Synth().toDestination();
+            winPairSynth.envelope.attack = 0.02;
+            winPairSynth.envelope.decay = 0.2;
+            winPairSynth.envelope.sustain = 0.05;
+            winPairSynth.envelope.release = 0.3;
+            
+            // Cores para o confetti
+            const confettiColors = ['#fde047', '#f87171', '#a78bfa', '#60a5fa', '#34d399']; // Amarelo, Vermelho, Roxo, Azul, Verde
+
+            // Estado do Jogo
+            let cards = [];
+            let flippedCards = [];
+            let matchedPairs = 0;
+            let moves = 0;
+            let timerInterval = null;
+            let gameInProgress = true; // Previne cliques múltiplos
+
+            // --- Funções do Jogo ---
+
+            // Função para tocar som
+            async function playSound(animalId) {
+                // Inicia o contexto de áudio no primeiro clique (requerido pelos navegadores)
+                if (Tone.context.state !== 'running') {
+                    await Tone.start();
+                }
+
+                const synth = synths[animalId];
+                const note = soundNotes[animalId];
+                if (!synth || !note) return;
+                
+                const now = Tone.now();
+
+                // Som padrão mais curto e infantil
+                const duration = synth instanceof Tone.PluckSynth ? '0.2s' : '0.1s';
+                synth.triggerAttackRelease(note, duration, now);
+            }
+
+            // Função para embaralhar o array
+            function shuffle(array) {
+                for (let i = array.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [array[i], array[j]] = [array[j], array[i]];
+                }
+                return array;
+            }
+
+            // Função para criar o tabuleiro
+            function createBoard() {
+                // Duplica os animais para formar pares e embaralha
+                cards = shuffle([...animalData, ...animalData]);
+                gameBoard.innerHTML = ''; // Limpa o tabuleiro anterior
+
+                cards.forEach((animal, index) => {
+                    const card = document.createElement('div');
+                    card.classList.add('card');
+                    card.dataset.id = animal.id; // Usa o ID para checagem
+                    card.dataset.index = index; // ID único para a carta
+
+                    card.innerHTML = `
+                        <div class="card-inner">
+                            <div class="card-back">
+                                <span>❓</span>
+                            </div>
+                            <div class="card-front" style="font-size: clamp(2rem, 10vw, 3.5rem);">
+                                ${animal.emoji}
+                            </div>
+                        </div>
+                    `;
+                    
+                    card.addEventListener('click', () => handleCardClick(card));
+                    gameBoard.appendChild(card);
+                });
+            }
+
+            // Função para iniciar/reiniciar o jogo
+            function startGame() {
+                gameInProgress = true;
+                moves = 0;
+                matchedPairs = 0;
+                flippedCards = [];
+                movesEl.textContent = moves;
+                
+                // Para o timer antigo e o esconde
+                clearInterval(timerInterval);
+                winModal.classList.add('hidden');
+                winModalContent.classList.add('scale-0');
+                winModalContent.classList.remove('scale-100', 'animate-boing');
+                timeEl.textContent = 0;
+
+                // Inicia novo timer
+                let startTime = Date.now();
+                timerInterval = setInterval(() => {
+                    const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+                    timeEl.textContent = elapsedTime;
+                }, 1000);
+
+                createBoard();
+            }
+
+            // Função para lidar com o clique na carta
+            function handleCardClick(card) {
+                // Não faz nada se o jogo estiver travado, a carta já estiver virada ou for um par
+                if (!gameInProgress || card.classList.contains('is-flipped') || card.classList.contains('is-matched')) {
+                    return;
+                }
+                
+                // Vira a carta
+                card.classList.add('is-flipped');
+                playSound(card.dataset.id);
+                flippedCards.push(card);
+
+                // Se duas cartas estiverem viradas, checa se são um par
+                if (flippedCards.length === 2) {
+                    checkForMatch();
+                }
+            }
+
+            // Função para checar se as duas cartas viradas são um par
+            function checkForMatch() {
+                gameInProgress = false; // Trava o tabuleiro
+                moves++;
+                movesEl.textContent = moves;
+
+                const [card1, card2] = flippedCards;
+
+                // É um par!
+                if (card1.dataset.id === card2.dataset.id) {
+                    card1.classList.add('is-matched');
+                    card2.classList.add('is-matched');
+                    matchedPairs++;
+                    flippedCards = [];
+                    gameInProgress = true; // Destrava o tabuleiro
+                    
+                    // Toca som de vitória para o par
+                    playWinPairSound();
+                    // Cria efeito de confetti
+                    createConfetti(card1.getBoundingClientRect().x + card1.offsetWidth / 2, card1.getBoundingClientRect().y + card1.offsetHeight / 2);
+                    createConfetti(card2.getBoundingClientRect().x + card2.offsetWidth / 2, card2.getBoundingClientRect().y + card2.offsetHeight / 2);
+
+
+                    // Checa condição de vitória
+                    if (matchedPairs === animalData.length) {
+                        endGame();
+                    }
+                } 
+                // Não é um par
+                else {
+                    setTimeout(() => {
+                        card1.classList.remove('is-flipped');
+                        card2.classList.remove('is-flipped');
+                        flippedCards = [];
+                        gameInProgress = true; // Destrava o tabuleiro
+                    }, 1000); // Espera 1 segundo
+                }
+            }
+
+            // Função para tocar um som de vitória quando um par é encontrado
+            async function playWinPairSound() {
+                if (Tone.context.state !== 'running') {
+                    await Tone.start();
+                }
+                const now = Tone.now();
+                winPairSynth.triggerAttackRelease('C5', '0.1s', now);
+                winPairSynth.triggerAttackRelease('E5', '0.1s', now + 0.1);
+                winPairSynth.triggerAttackRelease('G5', '0.1s', now + 0.2);
+            }
+
+            // Função para criar o efeito de confetti
+            function createConfetti(x, y) {
+                for (let i = 0; i < 15; i++) { // Cria 15 pedaços de confetti
+                    const confetti = document.createElement('div');
+                    confetti.classList.add('confetti');
+                    
+                    // Posição inicial levemente aleatória em torno do centro da carta
+                    confetti.style.left = `${x + (Math.random() - 0.5) * 40}px`;
+                    confetti.style.top = `${y + (Math.random() - 0.5) * 40}px`;
+                    
+                    // Cor aleatória
+                    confetti.style.setProperty('--color', confettiColors[Math.floor(Math.random() * confettiColors.length)]);
+                    
+                    // Tamanho aleatório
+                    const size = Math.random() * 8 + 4; // Entre 4px e 12px
+                    confetti.style.width = `${size}px`;
+                    confetti.style.height = `${size}px`;
+                    
+                    // Atraso de animação para um efeito mais espalhado
+                    confetti.style.animationDelay = `${Math.random() * 0.5}s`;
+
+                    document.body.appendChild(confetti);
+
+                    // Remove o confetti após a animação
+                    confetti.addEventListener('animationend', () => {
+                        confetti.remove();
+                    });
+                }
+            }
+
+
+            // Função para finalizar o jogo (mostrar modal de vitória)
+            function endGame() {
+                clearInterval(timerInterval); // Para o timer
+                
+                // Preenche os dados do modal
+                finalTimeEl.textContent = timeEl.textContent;
+                finalMovesEl.textContent = moves;
+                
+                // Mostra o modal com animação
+                winModal.classList.remove('hidden');
+                setTimeout(() => {
+                    winModalContent.classList.remove('scale-0');
+                    winModalContent.classList.add('scale-100', 'animate-boing');
+                }, 100); // Pequeno delay para a animação funcionar
+            }
+
+            // --- Event Listeners ---
+            restartBtn.addEventListener('click', startGame);
+            playAgainBtn.addEventListener('click', startGame);
+
+            // Inicia o jogo pela primeira vez
+            startGame();
+        });
+    </script>
+</body>
+</html>
+
+
